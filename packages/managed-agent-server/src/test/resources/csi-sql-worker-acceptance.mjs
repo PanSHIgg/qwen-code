@@ -130,6 +130,7 @@ const originalMount = Object.getOwnPropertyDescriptors(
   ManagedCsiMount.prototype,
 );
 const nativeListen = Server.prototype.listen;
+let retirementJoined = false;
 let worker,
   stores,
   session,
@@ -1126,6 +1127,31 @@ try {
   );
   assert.equal(finalBytes, 'gamma\n');
   assert.equal(observation.state.snapshots.length, 2);
+  const finalWriterGeneration = (await stores.publication.owner())
+    .writerGeneration;
+  let retirementResult;
+  if (input.retirement) {
+    await stores.csiRetirement.joinWriter();
+    const records = await session.authority.prepareOriginalCsiRelease();
+    await stores.csiRetirement.prepare(records);
+    // The generic assembly stops its activation timer and refuses the private final boundary.
+    await assert.rejects(
+      session.close({ releaseActivation: false }),
+      /original CSI retirement owns the final boundary/,
+    );
+    retirementJoined = true;
+    const intent = await fixture('/fixture:retire');
+    retirementResult = await stores.csiRetirement.complete(intent.retirementId);
+    assert.equal(retirementResult.stage, 'DRAINED');
+    assert.equal(retirementResult.progressVersion, 4);
+    const closedImage = await fixture('/fixture:image');
+    assert.deepEqual(
+      await stores.csiRetirement.complete(intent.retirementId),
+      retirementResult,
+    );
+    assert.deepEqual(await fixture('/fixture:image'), closedImage);
+    await stores.stopLocal();
+  }
   const workerUrl = worker.ready.context.url;
   await worker.close();
   worker = undefined;
@@ -1145,7 +1171,8 @@ try {
         retained,
         invocations,
         refusalChecks: checks.length,
-        writerGeneration: (await stores.publication.owner()).writerGeneration,
+        writerGeneration: finalWriterGeneration,
+        ...(retirementResult ? { retirement: retirementResult } : {}),
         coldRecovery: input.coldRecovery === true,
         coldRefusalChecks,
         originalActivation: initialActivation,
@@ -1164,8 +1191,11 @@ try {
 } finally {
   const cleanupErrors = [];
   for (const close of [
-    () => session?.close({ releaseActivation: false }),
-    () => stores?.close(),
+    () =>
+      retirementJoined
+        ? stores?.stopLocal()
+        : session?.close({ releaseActivation: false }),
+    () => (retirementJoined ? stores?.stopLocal() : stores?.close()),
   ]) {
     try {
       await close();

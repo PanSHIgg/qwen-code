@@ -1935,7 +1935,7 @@ public final class JdbcRuntimeBindingRepository
             return new BindingControl(connection, original, null);
         }
         return new BindingControl(
-                connection, original, JdbcCsiReadyAdmission.lock(connection, original));
+                connection, original, JdbcCsiApplicationProgress.lock(connection, original));
     }
 
     private static void requireControlBinding(
@@ -2007,7 +2007,7 @@ public final class JdbcRuntimeBindingRepository
     private record BindingControl(
             Connection connection,
             JdbcCsiFilesRetirementGuard.Original original,
-            JdbcCsiReadyAdmission.Admission progress) {}
+            JdbcCsiApplicationProgress.Continuation progress) {}
 
     private static void ensureSlot(Connection connection, String requestKey,
             RuntimeProvisionRequest request) throws SQLException {
