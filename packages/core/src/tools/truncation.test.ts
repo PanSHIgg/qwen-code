@@ -630,6 +630,19 @@ describe('truncateToolOutput', () => {
     const event = vi.mocked(logToolOutputTruncated).mock.calls[0][1];
     expect(event.prompt_id).toBe('prompt-123');
   });
+
+  it('carries the call id on a per-layer size event', async () => {
+    await truncateToolOutput(
+      tmpConfig,
+      'shell',
+      'a'.repeat(200_000),
+      { threshold: 100 },
+      'prompt-123',
+      'call-456',
+    );
+    const event = vi.mocked(logToolResultSize).mock.calls[0][1];
+    expect(event.call_id).toBe('call-456');
+  });
 });
 
 describe('truncateLlmContent', () => {

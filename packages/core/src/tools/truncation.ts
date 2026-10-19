@@ -339,6 +339,7 @@ export async function truncateToolOutput(
     source?: ToolOutputBudgetSource;
   },
   promptId?: string,
+  callId?: string,
 ): Promise<{ content: string; outputFile?: string }> {
   // Per-call `limits` override the global config thresholds. Used for
   // per-tool budgets (maxOutputChars) and the combined second-pass that runs
@@ -376,9 +377,11 @@ export async function truncateToolOutput(
     config,
   );
 
-  const inputSize = measureToolOutput(content, config);
-  const outputSize = measureToolOutput(result.content, config);
   try {
+    // Measurement is part of the observation: an estimator throw must not
+    // fail the truncation pass it only observes.
+    const inputSize = measureToolOutput(content, config);
+    const outputSize = measureToolOutput(result.content, config);
     logToolResultSize(
       config,
       new ToolResultSizeEvent(
@@ -397,7 +400,7 @@ export async function truncateToolOutput(
             : config.isTruncateToolOutputThresholdExplicit?.()
               ? 'explicit'
               : 'global'),
-        undefined,
+        callId,
         promptId,
       ),
     );
@@ -443,6 +446,7 @@ export async function truncateLlmContent(
     keep?: 'head' | 'tail' | 'both';
   },
   promptId?: string,
+  callId?: string,
 ): Promise<{ content: PartListUnion; outputFile?: string }> {
   // --- string path ---
   if (typeof content === 'string') {
@@ -455,7 +459,14 @@ export async function truncateLlmContent(
     if (content.startsWith(TOOL_OUTPUT_TRUNCATED_PREFIX)) {
       return { content };
     }
-    return truncateToolOutput(config, toolName, content, limits, promptId);
+    return truncateToolOutput(
+      config,
+      toolName,
+      content,
+      limits,
+      promptId,
+      callId,
+    );
   }
 
   // --- Part[] / single Part path ---
@@ -484,6 +495,7 @@ export async function truncateLlmContent(
     combined,
     limits,
     promptId,
+    callId,
   );
 
   // Unchanged (within budget or token-aware fallback): leave the original
